@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.9"
+__generated_with = "0.19.10"
 app = marimo.App(width="medium")
 
 
@@ -24,7 +24,7 @@ def _():
     from mosaic.util import calculate_rmsd, fold_in
     from mosaic.structure_prediction import TargetChain
     from mosaic.proteinmpnn.mpnn import load_mpnn_sol
-    from mosaic.common import TOKENS
+    from mosaic.common import TOKENS, LossTerm
 
     import time
     import json
@@ -54,6 +54,7 @@ def _():
         CoordsToToken,
         IPTMLoss,
         List,
+        LossTerm,
         NamedTemporaryFile,
         Path,
         Sampler,
@@ -157,7 +158,6 @@ def _(Boltz2, load_boltzgen, load_mpnn_sol):
     BOLTZGEN = load_boltzgen()
     BOLTZ2 = Boltz2()
     MPNN = load_mpnn_sol()
-
     return BOLTZ2, BOLTZGEN, MPNN
 
 
@@ -198,6 +198,7 @@ def _(
     Sampler,
     TargetBinderIPSAE,
     TargetChain,
+    ZeroLoss,
     batched_backbone_rmsd,
     fold_in,
     gemmi,
@@ -275,9 +276,10 @@ def _(
             [],
         )
 
+        zero_loss = ZeroLoss()
         refold_alone_outputs = jax.vmap(
             lambda k, feat: multifold(
-                k, feat, model=boltz2, loss=lambda sequence, output, key: (0.0, {'zero': 0.0}), num_samples=1
+                k, feat, model=boltz2, loss=zero_loss, num_samples=1
             )
         )(
             jax.random.split(fold_in(key, "monomer"), num_samples),
@@ -362,6 +364,15 @@ def _(dataclass, gemmi):
         ranking_loss: float
 
     return (BinderSample,)
+
+
+@app.cell
+def _(LossTerm):
+    class ZeroLoss(LossTerm):
+        def __call__(self, sequence, output, key):
+            return 0.0, {"zero": 0.0}
+
+    return (ZeroLoss,)
 
 
 @app.cell
