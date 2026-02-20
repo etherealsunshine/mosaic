@@ -383,7 +383,7 @@ def _(BinderSample, FILTER_RMSD: float):
             and sample.bb_rmsd_binder < filter_rmsd
             and sample.bb_rmsd_binder_alone < filter_rmsd
         )
-        return sample.ranking_loss + float("inf") if not passes_filters else 0.0
+        return sample.ranking_loss + (float("inf") if not passes_filters else 0.0)
 
     return (ranking_score,)
 
