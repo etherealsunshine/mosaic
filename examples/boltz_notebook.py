@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.15.5"
+__generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -22,6 +22,7 @@ with app.setup:
 @app.cell
 def _():
     from mosaic.models.af2 import AlphaFold2
+
     return (AlphaFold2,)
 
 
@@ -39,8 +40,7 @@ def _():
 
 @app.cell
 def _():
-    mo.md(
-        """
+    mo.md("""
     ---
     **Warning**
 
@@ -50,8 +50,7 @@ def _():
     4. If you change targets you'll likely have to fiddle with hyperparameters!
     5. This is pretty experimental, I highly recommend you stick with BindCraft if you're designing a minibinder against a protein target
     ---
-    """
-    )
+    """)
     return
 
 
@@ -127,7 +126,9 @@ def _(InverseFoldingSequenceRecovery, features, model, mpnn):
 
 @app.cell
 def _():
-    mo.md("""Adding the ProteinMPNN term to the loss above tends to generate sequences that AF2-multimer also likes, but is slower because we have to run the Boltz-2 structure module. Try removing it for faster generation!""")
+    mo.md("""
+    Adding the ProteinMPNN term to the loss above tends to generate sequences that AF2-multimer also likes, but is slower because we have to run the Boltz-2 structure module. Try removing it for faster generation!
+    """)
     return
 
 
@@ -166,6 +167,7 @@ def _(PSSM, loss):
 def _(model):
     def predict(sequence, features, writer):
         return model.predict(PSSM = sequence, features = features, writer = writer, key = jax.random.key(0))
+
     return (predict,)
 
 
@@ -233,7 +235,9 @@ def _(PSSM_sharper):
 
 @app.cell
 def _():
-    mo.md("""Make a template structure of the target alone we can use with AF2 multimer""")
+    mo.md("""
+    Make a template structure of the target alone we can use with AF2 multimer
+    """)
     return
 
 
@@ -276,6 +280,7 @@ def _(PSSM):
 def _():
     from mosaic.proteinmpnn.mpnn import ProteinMPNN
     from mosaic.losses.protein_mpnn import FixedStructureInverseFoldingLL, InverseFoldingSequenceRecovery
+
     return (
         FixedStructureInverseFoldingLL,
         InverseFoldingSequenceRecovery,
@@ -285,13 +290,16 @@ def _():
 
 @app.cell
 def _():
-    mo.md("""Let's do it live! We can inverse fold the predicted complex using MPNN and the jacobi iteration in a few lines of code.""")
+    mo.md("""
+    Let's do it live! We can inverse fold the predicted complex using MPNN and the jacobi iteration in a few lines of code.
+    """)
     return
 
 
 @app.cell
 def _():
     from mosaic.common import LossTerm
+
     return (LossTerm,)
 
 
@@ -303,6 +311,7 @@ def _(LossTerm):
         def __call__(self, sequence, key):
             v = (jax.random.gumbel(self.key, sequence.shape)*sequence).sum()
             return v, {"gumbel": v}
+
     return (GumbelPerturbation,)
 
 
@@ -327,6 +336,7 @@ def _():
             print(v)
 
         return sequence
+
     return (jacobi,)
 
 
@@ -343,7 +353,9 @@ def _(GumbelPerturbation, binder_length, if_ll, jacobi):
 
 @app.cell
 def _():
-    mo.md("""For fun let's design 10 complexes""")
+    mo.md("""
+    For fun let's design 10 complexes
+    """)
     return
 
 
@@ -366,6 +378,7 @@ def _(binder_length, features, loss, predict, structure_writer):
             PSSM, features, structure_writer
         )
         return prediction.st
+
     return (design,)
 
 
@@ -378,6 +391,7 @@ def _(design):
 @app.cell
 def _():
     from mosaic.notebook_utils import gemmi_structure_from_models
+
     return (gemmi_structure_from_models,)
 
 
