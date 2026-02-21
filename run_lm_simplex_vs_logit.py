@@ -70,7 +70,7 @@ def build_components(target_sequence: str, binder_len: int, use_esmc: bool = Fal
         loss=struct_terms,
         features=features,
         recycling_steps=1,
-        sampling_steps=2,
+        sampling_steps=1,
     )
 
     mpnn = load_mpnn_sol()
@@ -78,12 +78,12 @@ def build_components(target_sequence: str, binder_len: int, use_esmc: bool = Fal
         loss=InverseFoldingSequenceRecovery(
             mpnn=mpnn,
             temp=jnp.array(0.10),
-            num_samples=2,        # reduced
-            jacobi_iterations=3,  # reduced
+            num_samples=1,        
+            jacobi_iterations=1,  
         ),
         features=features,
         recycling_steps=1,
-        sampling_steps=2,
+        sampling_steps=1,
     )
 
     L_esmc = None
@@ -102,45 +102,17 @@ def _entropy(p, eps=1e-8):
 def _norm(x, eps=1e-12):
     return jnp.sqrt((x * x).sum() + eps)
 
-def make_plots(out_dir: str):
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    from pathlib import Path
+def mirror_descent_simplex_step(p, g, lr, mask, ref_pssm, eps=1e-8):
+    # mask gradient so only interface positions move
+    g = mask * g
+    # entropic mirror descent update: p_new ∝ p * exp(-lr g)
+    logits = jnp.log(p + eps) - lr * g
+    p_new = jax.nn.softmax(logits, axis=-1)
+    # keep frozen positions exactly fixed
+    p_new = mask * p_new + (1.0 - mask) * ref_pssm
+    p_new = p_new / (p_new.sum(-1, keepdims=True) + eps)
+    return p_new
 
-    out = Path(out_dir)
-    df = pd.read_csv(out / "step_logs_all.csv")
-
-    # Mean over seeds
-    g = (
-        df.groupby(["arm", "step"], as_index=False)
-        .agg(
-            L_struct=("L_struct", "mean"),
-            L_LM=("L_LM", "mean"),
-            L_total=("L_total", "mean"),
-            H=("H", "mean"),
-            p_max_mean=("p_max_mean", "mean"),
-            step_improve=("step_improve", "mean"),
-        )
-    )
-
-    metrics = ["L_struct", "L_LM", "L_total", "H", "p_max_mean", "step_improve"]
-    for m in metrics:
-        plt.figure(figsize=(6, 4))
-        for arm in ["simplex", "logit"]:
-            d = g[g["arm"] == arm]
-            plt.plot(d["step"], d[m], label=arm)
-        plt.title(f"{m} (mean over seeds)")
-        plt.xlabel("step")
-        plt.ylabel(m)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(out / f"plot_{m}.png", dpi=160)
-        plt.close()
-
-    # Also dump final-step summary table
-    final = g.sort_values("step").groupby("arm").tail(1)
-    final.to_csv(out / "final_step_summary.csv", index=False)
-    print("Saved plots + summary to", out)
 
 def run_arm(
     arm: str,
@@ -153,7 +125,7 @@ def run_arm(
     key=jax.random.key(230),
     verbose=True,
 ):
-    assert arm in ("simplex", "logit")
+    assert arm in ("simplex", "logit","mirror")
     mask = pos_mask.astype(jnp.float32)[:, None]
     ref_pssm = init_pssm.astype(jnp.float32)
 
@@ -248,12 +220,25 @@ def run_arm(
         if cfg.grad_clip is not None and gn_total > cfg.grad_clip:
             g_total = g_total * (cfg.grad_clip / (gn_total + 1e-12))
 
-        var = var - cfg.lr * g_total
-        if arm == "simplex":
+        if arm == "logit":
+            g_total = mask * g_total
+            var = var - cfg.lr * g_total
+
+        elif arm == "simplex":
+            g_total = mask * g_total
+            var = var - cfg.lr * g_total
             var = jnp.array(
                 projection_simplex(np.array(var, dtype=np.float64), z=1.0),
                 dtype=jnp.float32,
             )
+            var = mask * var + (1.0 - mask) * ref_pssm
+
+        elif arm == "mirror":
+            p_curr = var  # already simplex-valued
+            var = mirror_descent_simplex_step(
+                p=p_curr, g=g_total, lr=cfg.lr, mask=mask, ref_pssm=ref_pssm, eps=cfg.eps
+            )
+
 
         gc.collect()
 
@@ -269,24 +254,24 @@ def main():
     binder_len = int(init_pssm.shape[0])
 
     cfg = RunConfig(
-        steps=15,
-        lr=0.13,
+        steps=75,
+        lr=0.10,
         w_struct=1.0,
         w_mpnn=1.0,
         w_esmc=0.0,
         w_entropy=0.0,
         grad_clip=1.0,
-        compute_lm_grad_metrics=False,
+        compute_lm_grad_metrics=True,
     )
 
-    print("Building losses...")
+    print("Building losses...",flush=True)
     L_struct, L_mpnn, L_esmc = build_components(
         target_sequence=TARGET_SEQUENCE,
         binder_len=binder_len,
         use_esmc=USE_ESMC,
     )
 
-    seeds = [230, 231, 232]
+    seeds = [230,231,232,233,234]
     all_logs = []
 
     for seed in seeds:
@@ -306,15 +291,26 @@ def main():
         )
         np.save(run_dir / "final_pssm_logit.npy", np.array(p_logit))
 
+        print(f"\n=== Seed {seed}: mirror ===", flush=True)
+        p_mirror, log_mirror = run_arm(
+            "mirror", init_pssm, pos_mask, L_struct, L_mpnn, L_esmc, cfg, key=key, verbose=True
+        )
+        np.save(run_dir / "final_pssm_mirror.npy", np.array(p_mirror))
+        for row in log_mirror:
+            row["seed"] = seed
+
+
         # tag logs with seed
         for row in log_simplex:
             row["seed"] = seed
         for row in log_logit:
             row["seed"] = seed
+        for row in log_mirror:
+            row["seed"] = seed
 
-        seed_df = pd.DataFrame(log_simplex + log_logit)
+        seed_df = pd.DataFrame(log_simplex + log_logit+ log_mirror)
         seed_df.to_csv(run_dir / "step_logs.csv", index=False)
-        all_logs.extend(log_simplex + log_logit)
+        all_logs.extend(log_simplex + log_logit + log_mirror)
 
     pd.DataFrame(all_logs).to_csv(out / "step_logs_all.csv", index=False)
 
@@ -331,7 +327,7 @@ def main():
         )
 
     print("Done:", out)
-    make_plots(OUT_DIR)
+    
 
 
 
