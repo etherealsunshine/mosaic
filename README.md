@@ -40,7 +40,7 @@ The simplex arm consistently outperformed logit and mirror in this setup.
 
 ![L_total comparison](results/final_results/plot_L_total.png)
 ![L_struct comparison](results/final_results/plot_L_struct.png)
-![L_LM comparison](results/final_results/plot_L_struct.png)
+![L_LM comparison](results/final_results/plot_L_LM.png)
 ![p_max_mean comparison](results/final_results/plot_p_max_mean.png)
 Observed behavior:
 - `simplex` reduced `L_total` and `L_struct` substantially more than `logit`/`mirror`
