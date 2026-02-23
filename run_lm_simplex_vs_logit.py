@@ -22,13 +22,12 @@ from mosaic.optimizers import projection_simplex
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 os.environ.setdefault("XLA_PYTHON_CLIENT_ALLOCATOR", "platform")
 
-# -----------------------------
 # Config (edit these)
-# -----------------------------
+
 TARGET_SEQUENCE = "AFTVTVPKDLYVVEYGSNMTIECKFPVEKQLDLAALIVYWEMEDKNIIQFVHGEEDLKVQHSSYRQRARLLKDQLSLGNAALQITDVKLQDAGVYRCMISYGGADYKRITVKVNA"
 INIT_PSSM_PATH = "binder_empirical_pssm.npy"
 MASK_PATH = "binder_interface_mask.npy"
-OUT_DIR = "lm_vs_simplex_runs/run_oom_safe"
+OUT_DIR = "lm_vs_simplex_runs/run_oom_safe_final"
 
 SEED = 230
 USE_ESMC = False
@@ -105,10 +104,10 @@ def _norm(x, eps=1e-12):
 def mirror_descent_simplex_step(p, g, lr, mask, ref_pssm, eps=1e-8):
     # mask gradient so only interface positions move
     g = mask * g
-    # entropic mirror descent update: p_new ∝ p * exp(-lr g)
+    
     logits = jnp.log(p + eps) - lr * g
     p_new = jax.nn.softmax(logits, axis=-1)
-    # keep frozen positions exactly fixed
+    # keeping frozen positions exactly fixed
     p_new = mask * p_new + (1.0 - mask) * ref_pssm
     p_new = p_new / (p_new.sum(-1, keepdims=True) + eps)
     return p_new
@@ -125,7 +124,7 @@ def run_arm(
     key=jax.random.key(230),
     verbose=True,
 ):
-    assert arm in ("simplex", "logit","mirror")
+    assert arm in ("simplex", "logit", "mirror")
     mask = pos_mask.astype(jnp.float32)[:, None]
     ref_pssm = init_pssm.astype(jnp.float32)
 
@@ -234,7 +233,7 @@ def run_arm(
             var = mask * var + (1.0 - mask) * ref_pssm
 
         elif arm == "mirror":
-            p_curr = var  # already simplex-valued
+            p_curr = var  
             var = mirror_descent_simplex_step(
                 p=p_curr, g=g_total, lr=cfg.lr, mask=mask, ref_pssm=ref_pssm, eps=cfg.eps
             )
@@ -271,7 +270,7 @@ def main():
         use_esmc=USE_ESMC,
     )
 
-    seeds = [230,231,232,233,234]
+    seeds = [230,231,232]
     all_logs = []
 
     for seed in seeds:
@@ -298,9 +297,7 @@ def main():
         np.save(run_dir / "final_pssm_mirror.npy", np.array(p_mirror))
         for row in log_mirror:
             row["seed"] = seed
-
-
-        # tag logs with seed
+ 
         for row in log_simplex:
             row["seed"] = seed
         for row in log_logit:
@@ -308,9 +305,9 @@ def main():
         for row in log_mirror:
             row["seed"] = seed
 
-        seed_df = pd.DataFrame(log_simplex + log_logit+ log_mirror)
+        seed_df = pd.DataFrame(log_simplex + log_logit+ log_mirror) 
         seed_df.to_csv(run_dir / "step_logs.csv", index=False)
-        all_logs.extend(log_simplex + log_logit + log_mirror)
+        all_logs.extend(log_simplex + log_logit + log_mirror) 
 
     pd.DataFrame(all_logs).to_csv(out / "step_logs_all.csv", index=False)
 

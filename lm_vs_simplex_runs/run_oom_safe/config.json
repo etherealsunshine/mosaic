@@ -1,0 +1,19 @@
+{
+  "seeds": [
+    230
+  ],
+  "binder_len": 106,
+  "use_esmc": false,
+  "cfg": {
+    "steps": 10,
+    "lr": 0.13,
+    "w_struct": 1.0,
+    "w_mpnn": 1.0,
+    "w_esmc": 0.0,
+    "w_entropy": 0.0,
+    "grad_clip": 1.0,
+    "eps": 1e-08,
+    "compute_lm_grad_metrics": false,
+    "lm_grad_every": 10
+  }
+}
